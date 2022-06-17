@@ -283,7 +283,7 @@ bool updateHead() {
 			PlaceholderAPI::translateString(dfs, pl);
 			string sinfo = forEachReplace(ud, dfs);
 			//设置NameTag
-			pl->setName(sinfo);
+			pl->rename(sinfo);
 		}
 		catch (...) {
 
