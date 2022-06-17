@@ -7,6 +7,11 @@
 #pragma comment(lib, "../SDK/Lib/SymDBHelper.lib")
 #pragma comment(lib, "../SDK/Lib/LiteLoader.lib")
 
+//third-party
+#pragma comment(lib,"../Lib/libcrypto.lib")
+#pragma comment(lib,"../Lib/libssl.lib")
+#pragma comment(lib,"../Lib/BEPlaceholderAPI.lib")
+
 BOOL APIENTRY DllMain( HMODULE hModule,
                        DWORD  ul_reason_for_call,
                        LPVOID lpReserved
