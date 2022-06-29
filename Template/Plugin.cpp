@@ -278,6 +278,7 @@ bool updateHead() {
 			stream << std::fixed << std::setprecision(1) << hunger;
 			std::string hunger_str = stream.str();
 			dfs = m_replace(dfs, "%player_hunger%", hunger_str);
+			dfs = m_replace(dfs, "%player_max_hunger%", "20");
 
 			//格式化接入PAPI
 			PlaceholderAPI::translateString(dfs, pl);
