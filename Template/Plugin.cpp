@@ -13,7 +13,6 @@
 #include <MC/Level.hpp>
 #include <RegCommandAPI.h>
 #include <MC/IdentityDefinition.hpp>
-#include "../SDK/Header/Utils/PlayerMap.h"
 #include "../SDK/Header/third-party/Nlohmann/json.hpp"
 #include <LoggerAPI.h>
 #include <LLAPI.h>
@@ -28,6 +27,8 @@
 #include "../Lib/PlaceholderAPI.h"
 #include <MC/Attribute.hpp>
 #include <MC/AttributeInstance.hpp>
+#include <MC/SetActorDataPacket.hpp>
+#include <SendPacketAPI.h>
 
 typedef money_t(*LLMoneyGet_T)(xuid_t);
 typedef string(*LLMoneyGetHist_T)(xuid_t, int);
@@ -51,19 +52,11 @@ struct dynamicSymbolsMap_type
 using nlohmann::json;
 Logger logger("HeadShow");
 using namespace std;
-playerMap<string> ORIG_NAME;
 int tick = 0;
 bool ServerStarted = false;
 const std::string ver = "v0.0.9";
 const std::string fileName = "plugins/HeadShow/config.json";
 
-//修改返回的Name 
-THook(string&, "?getNameTag@Actor@@UEBAAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ", void* x) {
-	if (auto it = ORIG_NAME._map.find((ServerPlayer*)x); it != ORIG_NAME._map.end()) {
-		return it->second;
-	}
-	return original(x);
-}
 
 //Config
 string defaultString = "%player_realname%\n§c❤§a%player_health%§e/§b%player_max_health% §a%player_hunger%§e/§b%player_max_hunger%\n§f%player_device% §c%player_ping%ms";
@@ -252,44 +245,54 @@ string forEachReplace(std::unordered_map<string, string> d, string s) {
 }
 
 
+void updatePlayerHead(Player* pl) {
+	try {
+		string name = pl->getRealName();
+		std::unordered_map<string, string> ud = {};
+		string dfs = defaultString;
+		//获取scoreboard
+		if (defaultScoreBoard.size() != 0) {
+			for (auto it = defaultScoreBoard.begin(); it != defaultScoreBoard.end(); ++it) {
+				string score = std::to_string(pl->getScore((string)it.value()));
+				ud["%" + it.key() + "%"] = score;
+			}
+		}
+		//获取Money
+		if (dynamicSymbolsMap.LLMoneyGet) {
+			string money = std::to_string((int)EconomySystem::getMoney(pl->getXuid()));
+			ud["%money%"] = money;
+		}
+		//更改饥饿值
+		float hunger = pl->getAttribute(Player::HUNGER).getCurrentValue();
+		std::stringstream stream;
+		stream << std::fixed << std::setprecision(1) << hunger;
+		std::string hunger_str = stream.str();
+		dfs = m_replace(dfs, "%player_hunger%", hunger_str);
+		dfs = m_replace(dfs, "%player_max_hunger%", "20");
+
+		//格式化接入PAPI
+		PlaceholderAPI::translateString(dfs, pl);
+		string sinfo = forEachReplace(ud, dfs);
+
+		//设置NameTag
+		SetActorDataPacket packet;
+		packet.mRuntimeId = pl->getRuntimeID();
+		if (packet.mRuntimeId.id == 0)
+			return;
+		packet.mDataItems.emplace_back(DataItem::create(ActorDataIDs::NAMETAG, sinfo));
+
+		for (auto player : Level::getAllPlayers()) {
+			player->sendNetworkPacket(packet);
+		}
+		//pl->rename(sinfo);
+	}
+	catch (...) { }
+}
+
 bool updateHead() {
 	for (auto pl : Level::getAllPlayers())
 	{
-		try {
-			string name = pl->getRealName();
-			ORIG_NAME[(ServerPlayer*)pl] = name.c_str();
-			std::unordered_map<string, string> ud = {};
-			string dfs = defaultString;
-			//获取scoreboard
-			if (defaultScoreBoard.size() != 0) {
-				for (auto it = defaultScoreBoard.begin(); it != defaultScoreBoard.end(); ++it) {
-					string score = std::to_string(pl->getScore((string)it.value()));
-					ud["%" + it.key() + "%"] = score;
-				}
-			}
-			//获取Money
-			if (dynamicSymbolsMap.LLMoneyGet) {
-				string money = std::to_string((int)EconomySystem::getMoney(pl->getXuid()));
-				ud["%money%"] = money;
-			}
-			//更改饥饿值
-			float hunger = pl->getAttribute(Player::HUNGER).getCurrentValue();
-			std::stringstream stream;
-			stream << std::fixed << std::setprecision(1) << hunger;
-			std::string hunger_str = stream.str();
-			dfs = m_replace(dfs, "%player_hunger%", hunger_str);
-			dfs = m_replace(dfs, "%player_max_hunger%", "20");
-
-			//格式化接入PAPI
-			PlaceholderAPI::translateString(dfs, pl);
-			string sinfo = forEachReplace(ud, dfs);
-			//设置NameTag
-			pl->rename(sinfo);
-		}
-		catch (...) {
-
-		}
-		
+		updatePlayerHead(pl);
 	}
 	return true;
 }
@@ -297,8 +300,8 @@ bool updateHead() {
 //玩家生命变动
 THook(long long, "?change@HealthAttributeDelegate@@UEAAMMMAEBVAttributeBuff@@@Z", __int64 a1, float a2, float a3, __int64 a4) {
 	Actor* ac = *(Actor**)(a1 + 32);
-	if (ac->getTypeName() == "minecraft:player") {
-		updateHead();
+	if (ac->isPlayer()) {
+		updatePlayerHead((Player*)ac);
 	}
 	return original(a1, a2, a3, a4);
 }
