@@ -29,6 +29,7 @@
 #include <MC/AttributeInstance.hpp>
 #include <MC/SetActorDataPacket.hpp>
 #include <SendPacketAPI.h>
+#include "Version.h"
 
 typedef money_t(*LLMoneyGet_T)(xuid_t);
 typedef string(*LLMoneyGetHist_T)(xuid_t, int);
