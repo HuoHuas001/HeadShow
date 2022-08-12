@@ -54,7 +54,7 @@ Logger logger("HeadShow");
 using namespace std;
 int tick = 0;
 bool ServerStarted = false;
-const std::string ver = "v0.0.9";
+const std::string ver = "v0.1.4";
 const std::string fileName = "plugins/HeadShow/config.json";
 
 
@@ -146,7 +146,7 @@ bool EconomySystem::init() {
 		return false;
 	}
 
-	HMODULE h = llmoney->handler;
+	HMODULE h = llmoney->handle;
 	dynamicSymbolsMap.LLMoneyGet = (LLMoneyGet_T)GetProcAddress(h, "LLMoneyGet");
 	if (!dynamicSymbolsMap.LLMoneyGet)
 		logger.warn("Fail to load API money.getMoney!");
