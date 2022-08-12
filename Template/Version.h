@@ -2,7 +2,7 @@
 
 #define PLUGIN_VERSION_DEV     0
 #define PLUGIN_VERSION_BETA    1
-#define PLUGIN_VERSION_RELEASE 2
+#define PLUGIN_VERSION_RELEASE 4
 
 // Plugin Information, used in dllmain.cpp for register plugin
 
@@ -11,7 +11,7 @@
 #define PLUGIN_AUTHOR               "HuoHua"
 #define PLUGIN_VERSION_MAJOR        0
 #define PLUGIN_VERSION_MINOR        1
-#define PLUGIN_VERSION_REVISION     0
+#define PLUGIN_VERSION_REVISION     4
 #define PLUGIN_VERSION_BUILD        0
 #define PLUGIN_VERSION_STATUS       PLUGIN_VERSION_DEV
 

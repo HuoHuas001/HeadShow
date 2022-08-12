@@ -4,12 +4,16 @@
 #include <MC/Mob.hpp>
 #include <MC/Player.hpp>
 #include <MC/ServerPlayer.hpp>
+#include <MC/Certificate.hpp>
 #include <MC/CompoundTag.hpp>
+#include <MC/NetworkHandler.hpp>
+#include <MC/ServerNetworkHandler.hpp>
+#include <MC/NetworkIdentifier.hpp>
+#include <MC/NetworkPeer.hpp>
 #include <MC/Level.hpp>
 #include <RegCommandAPI.h>
 #include <MC/IdentityDefinition.hpp>
-#include <Utils/PlayerMap.h>
-#include <Nlohmann/json.hpp>
+#include "../SDK/Header/third-party/Nlohmann/json.hpp"
 #include <LoggerAPI.h>
 #include <LLAPI.h>
 #include <EventAPI.h>
@@ -17,10 +21,14 @@
 #include <MC/Objective.hpp>
 #include "money.h"
 #include <ScheduleAPI.h>
-
+//#include "../SDK/Header/LLMoney.h"
 #define CPPHTTPLIB_OPENSSL_SUPPORT
-#include "httplib.h"
-#include "PlaceholderAPI.h"
+#include <httplib/httplib.h>
+#include "../Lib/PlaceholderAPI.h"
+#include <MC/Attribute.hpp>
+#include <MC/AttributeInstance.hpp>
+#include <MC/SetActorDataPacket.hpp>
+#include <SendPacketAPI.h>
 
 typedef money_t(*LLMoneyGet_T)(xuid_t);
 typedef string(*LLMoneyGetHist_T)(xuid_t, int);
@@ -42,46 +50,92 @@ struct dynamicSymbolsMap_type
 } dynamicSymbolsMap;
 
 using nlohmann::json;
-using namespace std;
-
-//Logger
 Logger logger("HeadShow");
-
-//playerMap
-playerMap<string> ORIG_NAME;
-
+using namespace std;
 int tick = 0;
 bool ServerStarted = false;
-const std::string ver = "v0.1.0";
+const std::string ver = "v0.1.4";
+const std::string fileName = "plugins/HeadShow/config.json";
 
-//修改返回的Name 
-THook(string&, "?getNameTag@Actor@@UEBAAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ", void* x) {
-	if (auto it = ORIG_NAME._map.find((ServerPlayer*)x); it != ORIG_NAME._map.end()) {
-		return it->second;
-	}
-	return original(x);
-}
 
 //Config
-string defaultString = "%player_realname%\n§c❤§b%player_max_health%§e/§a%player_health% §b%player_max_hunger%§e/§a%player_hunger%\n§f%player_device% §c%player_ping%ms";
+string defaultString = "%player_realname%\n§c❤§a%player_health%§e/§b%player_max_health% §a%player_hunger%§e/§b%player_max_hunger%\n§f%player_device% §c%player_ping%ms";
 json defaultScoreBoard;
-int defaultTick = 20;
+int defaultTick = 40;
 
-bool readJson() {
-	json j;			// 创建 json 对象
-	std::ifstream jfile("plugins/HeadShow/config.json");
-	if (jfile) {
-		jfile >> j;		// 以文件流形式读取 json 文件
-		defaultTick = j.at("updateTick");
-		defaultString = j.at("showTitle");
-		defaultScoreBoard = j["scoreBoard"];
-		return true;
+nlohmann::json globaljson() {
+	nlohmann::json json;
+	json["updateTick"] = defaultTick;
+	json["scoreBoard"] = defaultScoreBoard;
+	json["showTitle"] = defaultString;
+	return json;
+}
+
+void initjson(nlohmann::json json) {
+	if (json.find("updateTick") != json.end()) {
+		const nlohmann::json& out = json.at("updateTick");
+		out.get_to(defaultTick);
+	}
+	if (json.find("scoreBoard") != json.end()) {
+		const nlohmann::json& out = json.at("scoreBoard");
+		out.get_to(defaultScoreBoard);
+	}
+	if (json.find("showTitle") != json.end()) {
+		const nlohmann::json& out = json.at("showTitle");
+		out.get_to(defaultString);
+	}
+}
+
+void WriteDefaultData(const std::string& fileName) {
+	//初始化scoreboard
+	defaultScoreBoard["score"] = "money";
+	defaultScoreBoard["score1"] = "money1";
+	std::ofstream file(fileName);
+	if (!file.is_open()) {
+		logger.warn("Can't open config.json file(" + fileName + ")");
+		return;
+	}
+	auto json = globaljson();
+	file << json.dump(4);
+	file.close();
+}
+
+void readJson() {
+	std::ifstream file(fileName);
+	if (!file.is_open()) {
+		logger.warn("Can't open config.json file(" + fileName + ")");
+		return;
+	}
+	nlohmann::json json;
+	file >> json;
+	file.close();
+	initjson(json);
+}
+
+void loadConfig() {
+	//data
+	if (!std::filesystem::exists("plugins/HeadShow"))
+		std::filesystem::create_directories("plugins/HeadShow");
+	//tr	
+	if (std::filesystem::exists(fileName)) {
+		try {
+			readJson();
+		}
+		catch (std::exception& e) {
+			logger.error("Config File isInvalid, Err {}", e.what());
+			Sleep(1000 * 100);
+			exit(1);
+		}
+		catch (...) {
+			logger.error("Config File isInvalid");
+			Sleep(1000 * 100);
+			exit(1);
+		}
 	}
 	else {
-		logger.warn("No config.json file was detected. Please confirm whether the installation package is complete");
-		return false;
+		logger.info("Config File with default values created");
+		WriteDefaultData(fileName);
 	}
-
 }
 
 bool EconomySystem::init() {
@@ -92,7 +146,7 @@ bool EconomySystem::init() {
 		return false;
 	}
 
-	HMODULE h = llmoney->handler;
+	HMODULE h = llmoney->handle;
 	dynamicSymbolsMap.LLMoneyGet = (LLMoneyGet_T)GetProcAddress(h, "LLMoneyGet");
 	if (!dynamicSymbolsMap.LLMoneyGet)
 		logger.warn("Fail to load API money.getMoney!");
@@ -102,7 +156,7 @@ bool EconomySystem::init() {
 void version() {
 	httplib::SSLClient cli("api.github.com", 443);
 	if (auto res = cli.Get("/repos/HuoHuas001/HeadShow/releases/latest")) {
-		if (res->status == 200) {
+		if (res->status == 200){
 			string body = res->body;
 			json j = json::parse(body);
 
@@ -111,7 +165,7 @@ void version() {
 			if (getVersion != ver) {
 				//更新文件链接
 				string downloadUrl = j["assets"][0]["browser_download_url"];
-				logger.warn("New version update detected, download link:" + downloadUrl + ".");
+				logger.warn("New version update detected, download link:"+downloadUrl+".");
 			}
 			else {
 				logger.info("Your version is already the latest version.");
@@ -148,9 +202,9 @@ public:
 	void execute(CommandOrigin const& ori, CommandOutput& output) const override {//执行部分
 		ServerPlayer* sp = ori.getPlayer();
 		//检测玩家权限
-		if (sp->getPlayerPermissionLevel() > 0 && sp->isPlayer()) {
-			bool re = readJson();
-			if (re) {
+		if (sp->isPlayer()) {
+			if (sp->getPlayerPermissionLevel() > 0) {
+				loadConfig();
 				output.addMessage("HeadShow file reload success.");
 				//检查计分板
 				if (defaultScoreBoard.size() != 0) {
@@ -191,36 +245,54 @@ string forEachReplace(std::unordered_map<string, string> d, string s) {
 }
 
 
+void updatePlayerHead(Player* pl) {
+	try {
+		string name = pl->getRealName();
+		std::unordered_map<string, string> ud = {};
+		string dfs = defaultString;
+		//获取scoreboard
+		if (defaultScoreBoard.size() != 0) {
+			for (auto it = defaultScoreBoard.begin(); it != defaultScoreBoard.end(); ++it) {
+				string score = std::to_string(pl->getScore((string)it.value()));
+				ud["%" + it.key() + "%"] = score;
+			}
+		}
+		//获取Money
+		if (dynamicSymbolsMap.LLMoneyGet) {
+			string money = std::to_string((int)EconomySystem::getMoney(pl->getXuid()));
+			ud["%money%"] = money;
+		}
+		//更改饥饿值
+		float hunger = pl->getAttribute(Player::HUNGER).getCurrentValue();
+		std::stringstream stream;
+		stream << std::fixed << std::setprecision(1) << hunger;
+		std::string hunger_str = stream.str();
+		dfs = m_replace(dfs, "%player_hunger%", hunger_str);
+		dfs = m_replace(dfs, "%player_max_hunger%", "20");
+
+		//格式化接入PAPI
+		PlaceholderAPI::translateString(dfs, pl);
+		string sinfo = forEachReplace(ud, dfs);
+
+		//设置NameTag
+		SetActorDataPacket packet;
+		packet.mRuntimeId = pl->getRuntimeID();
+		if (packet.mRuntimeId.id == 0)
+			return;
+		packet.mDataItems.emplace_back(DataItem::create(ActorDataIDs::NAMETAG, sinfo));
+
+		for (auto player : Level::getAllPlayers()) {
+			player->sendNetworkPacket(packet);
+		}
+		//pl->rename(sinfo);
+	}
+	catch (...) { }
+}
+
 bool updateHead() {
 	for (auto pl : Level::getAllPlayers())
 	{
-		try {
-			string name = pl->getRealName();
-			ORIG_NAME[(ServerPlayer*)pl] = name;
-			std::unordered_map<string, string> ud = {};
-			string dfs = defaultString;
-			//获取scoreboard
-			if (defaultScoreBoard.size() != 0) {
-				for (auto it = defaultScoreBoard.begin(); it != defaultScoreBoard.end(); ++it) {
-					string score = std::to_string(pl->getScore((string)it.value()));
-					ud["%" + it.key() + "%"] = score;
-				}
-			}
-			//获取Money
-			if (dynamicSymbolsMap.LLMoneyGet) {
-				string money = std::to_string((int)EconomySystem::getMoney(pl->getXuid()));
-				ud["%money%"] = money;
-			}
-			//格式化接入PAPI
-			PlaceholderAPI::translateString(dfs, pl);
-			string sinfo = forEachReplace(ud, dfs);
-			//设置NameTag
-			pl->rename(sinfo);
-		}
-		catch (...) {
-
-		}
-
+		updatePlayerHead(pl);
 	}
 	return true;
 }
@@ -228,8 +300,8 @@ bool updateHead() {
 //玩家生命变动
 THook(long long, "?change@HealthAttributeDelegate@@UEAAMMMAEBVAttributeBuff@@@Z", __int64 a1, float a2, float a3, __int64 a4) {
 	Actor* ac = *(Actor**)(a1 + 32);
-	if (ac->getTypeName() == "minecraft:player") {
-		updateHead();
+	if (ac->isPlayer()) {
+		updatePlayerHead((Player*)ac);
 	}
 	return original(a1, a2, a3, a4);
 }
@@ -242,14 +314,14 @@ void PluginInit()
 	//初始化llmoney的api
 	EconomySystem::init();
 	//读取json文件
-	if (bool re = readJson()) logger.info("Readfile success.");
+	loadConfig();
 	logger.info("HeadShow Loaded. By HuoHua");
 
 	//注册指令
 	Event::RegCmdEvent::subscribe([](Event::RegCmdEvent ev) { //注册指令事件
 		ReloadCommand::setup(ev.mCommandRegistry);
 		return true;
-		});
+	});
 
 	//检测开服
 	Event::ServerStartedEvent::subscribe([](Event::ServerStartedEvent ev) {
