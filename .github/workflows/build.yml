@@ -88,7 +88,7 @@ jobs:
         files: |
           D:/out/plugins.zip
       env:
-          GITHUB_REPOSITORY: HuoHuas001/Survival_Fly
+          GITHUB_REPOSITORY: HuoHuas001/HeadShow
 
   Clean:
     runs-on: ubuntu-latest

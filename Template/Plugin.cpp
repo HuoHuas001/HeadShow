@@ -13,7 +13,7 @@
 #include <MC/Level.hpp>
 #include <RegCommandAPI.h>
 #include <MC/IdentityDefinition.hpp>
-#include "../SDK/Header/third-party/Nlohmann/json.hpp"
+#include <Nlohmann/json.hpp>
 #include <LoggerAPI.h>
 #include <LLAPI.h>
 #include <EventAPI.h>
@@ -27,7 +27,7 @@
 #include "../Lib/PlaceholderAPI.h"
 #include <MC/Attribute.hpp>
 #include <MC/AttributeInstance.hpp>
-#include <MC/SetActorDataPacket.hpp>
+#include <self_SetActorDataPacket.hpp>
 #include <SendPacketAPI.h>
 #include "Version.h"
 
