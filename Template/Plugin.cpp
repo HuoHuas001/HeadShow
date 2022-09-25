@@ -140,7 +140,7 @@ void loadConfig() {
 }
 
 bool EconomySystem::init() {
-	auto llmoney = LL::getPlugin("LLMoney");
+	auto llmoney = ll::getPlugin("LLMoney");
 	if (!llmoney)
 	{
 		logger.warn("The %money% variable will not take effect if LLMoney is not preceded");
@@ -203,18 +203,16 @@ public:
 	void execute(CommandOrigin const& ori, CommandOutput& output) const override {//执行部分
 		ServerPlayer* sp = ori.getPlayer();
 		//检测玩家权限
-		if (sp->isPlayer()) {
-			if (sp->getPlayerPermissionLevel() > 0) {
-				loadConfig();
-				output.addMessage("HeadShow file reload success.");
-				//检查计分板
-				if (defaultScoreBoard.size() != 0) {
-					for (auto it = defaultScoreBoard.begin(); it != defaultScoreBoard.end(); ++it) {
-						string board = (string)it.value();
-						if (!::Global<Scoreboard>->getObjective(board)) {
-							auto obj = Scoreboard::newObjective(board, board);
-							output.addMessage("Failed to find " + board + ", created automatically");
-						}
+		if (sp->isPlayer() && sp->isOP()) {
+			loadConfig();
+			output.addMessage("HeadShow file reload success.");
+			//检查计分板
+			if (defaultScoreBoard.size() != 0) {
+				for (auto it = defaultScoreBoard.begin(); it != defaultScoreBoard.end(); ++it) {
+					string board = (string)it.value();
+					if (!::Global<Scoreboard>->getObjective(board)) {
+						auto obj = Scoreboard::newObjective(board, board);
+						output.addMessage("Failed to find " + board + ", created automatically");
 					}
 				}
 			}
@@ -310,7 +308,7 @@ THook(long long, "?change@HealthAttributeDelegate@@UEAAMMMAEBVAttributeBuff@@@Z"
 
 void PluginInit()
 {
-	LL::registerPlugin("HeadShow", "Show info on player's belowname", LL::Version(0, 0, 1));
+	ll::registerPlugin("HeadShow", "Show info on player's belowname", ll::Version(0, 1, 5));
 	logger.info("HeadShow Loading...");
 	//初始化llmoney的api
 	EconomySystem::init();
