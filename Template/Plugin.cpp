@@ -1,18 +1,10 @@
 ﻿#include "pch.h"
-#include <MC/Minecraft.hpp>
 #include <MC/Actor.hpp>
-#include <MC/Mob.hpp>
 #include <MC/Player.hpp>
 #include <MC/ServerPlayer.hpp>
-#include <MC/Certificate.hpp>
 #include <MC/CompoundTag.hpp>
-#include <MC/NetworkHandler.hpp>
-#include <MC/ServerNetworkHandler.hpp>
-#include <MC/NetworkIdentifier.hpp>
-#include <MC/NetworkPeer.hpp>
 #include <MC/Level.hpp>
 #include <RegCommandAPI.h>
-#include <MC/IdentityDefinition.hpp>
 #include <Nlohmann/json.hpp>
 #include <LoggerAPI.h>
 #include <LLAPI.h>
@@ -27,7 +19,7 @@
 #include "../Lib/PlaceholderAPI.h"
 #include <MC/Attribute.hpp>
 #include <MC/AttributeInstance.hpp>
-#include <self_SetActorDataPacket.hpp>
+#include <PlayerInfoAPI.h>
 #include <SendPacketAPI.h>
 #include "Version.h"
 
@@ -258,7 +250,7 @@ void updatePlayerHead(Player* pl) {
 		}
 		//获取Money
 		if (dynamicSymbolsMap.LLMoneyGet) {
-			string money = std::to_string((int)EconomySystem::getMoney(pl->getXuid()));
+			std::string money = std::to_string((int)EconomySystem::getMoney(PlayerInfo::getXuid(pl->getRealName())));
 			ud["%money%"] = money;
 		}
 		//更改饥饿值
@@ -274,14 +266,20 @@ void updatePlayerHead(Player* pl) {
 		string sinfo = forEachReplace(ud, dfs);
 
 		//设置NameTag
-		SetActorDataPacket packet;
-		packet.mRuntimeId = pl->getRuntimeID();
-		if (packet.mRuntimeId.id == 0)
-			return;
-		packet.mDataItems.emplace_back(DataItem::create(ActorDataIDs::NAMETAG, sinfo));
+		std::vector<std::unique_ptr<DataItem>> DataItems;
+		DataItems.emplace_back(DataItem::create(ActorDataIDs::NAMETAG, sinfo));
+
+		BinaryStream bs;
+		bs.writeUnsignedVarInt64(pl->getRuntimeID());
+		bs.writeType(DataItems);
+		bs.writeUnsignedVarInt(0);
+		bs.writeUnsignedVarInt(0);
+		bs.writeUnsignedVarInt64(0);
+
+		NetworkPacket<39> pkt(bs.getAndReleaseData());
 
 		for (auto player : Level::getAllPlayers()) {
-			player->sendNetworkPacket(packet);
+			player->sendNetworkPacket(pkt);
 		}
 		//pl->rename(sinfo);
 	}
